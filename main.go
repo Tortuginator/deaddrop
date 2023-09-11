@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"github.com/akamensky/argparse"
@@ -21,12 +22,51 @@ type Web struct {
 	methods   []string
 }
 
-func (web *Web) uploadFile(w http.ResponseWriter, r *http.Request) {
+var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z0-9\. ]+`)
+
+func (web *Web) uploadFileGeneric(w http.ResponseWriter, r *http.Request) {
 	if !slices.Contains(web.methods, r.Method) {
 		fmt.Printf("Upload endpoint requested using a unknown method '%s'\n", r.Method)
 		return
 	}
 	fmt.Println("File upload requested")
+
+	if r.Header.Get("content-type") == "application/x-www-form-urlencoded" {
+		web.uploadFileBinary(w, r)
+		return
+	} else {
+		web.uploadFileMultipart(w, r)
+		return
+	}
+}
+
+func (web *Web) uploadFileBinary(w http.ResponseWriter, r *http.Request) {
+	path := filepath.Join(web.directory, fmt.Sprintf("%d.blob", time.Now().Unix()))
+	// Create a  file within our directory
+	tFile, err := os.Create(path)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "ERR - 0xa3\n")
+		return
+	}
+	defer tFile.Close()
+
+	// read all of the contents of our uploaded file into a byte array
+	fileBytes, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "ERR - 0xa4\n")
+		return
+	}
+	// write this byte array to our file
+	tFile.Write(fileBytes)
+	// return that we have successfully uploaded our file!
+	fmt.Fprintf(w, "OK\n")
+}
+
+func (web *Web) uploadFileMultipart(w http.ResponseWriter, r *http.Request) {
 	r.ParseMultipartForm(web.maxSize << 20)
 	file, handler, err := r.FormFile(web.name)
 	if err != nil {
@@ -37,11 +77,14 @@ func (web *Web) uploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
-	fmt.Printf("Uploaded File: %+v\n", handler.Filename)
+
+	cleaned_filename := nonAlphanumericRegex.ReplaceAllString(handler.Filename, "_")
+
+	fmt.Printf("Uploaded File: %+v\n", cleaned_filename)
 	fmt.Printf("File Size: %+v\n", handler.Size)
 	fmt.Printf("MIME Header: %+v\n", handler.Header)
 
-	path := filepath.Join(web.directory, fmt.Sprintf("%d.%s", time.Now().Unix(), handler.Filename))
+	path := filepath.Join(web.directory, fmt.Sprintf("%d.%s", time.Now().Unix(), cleaned_filename))
 
 	//Check for path traversal
 	if filepath.Dir(path) != filepath.Dir(web.directory) {
@@ -105,7 +148,7 @@ func main() {
 	}
 
 	fmt.Printf("Starting HTTP server on: %d\n", *port)
-	http.HandleFunc("/", web.uploadFile)
+	http.HandleFunc("/", web.uploadFileGeneric)
 	http.ListenAndServe(fmt.Sprintf(":%d", *port), nil)
 	if err != nil {
 		log.Fatal(err)
