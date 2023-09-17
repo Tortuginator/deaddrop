@@ -29,12 +29,15 @@ func (web *Web) uploadFileGeneric(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("Upload endpoint requested using a unknown method '%s'\n", r.Method)
 		return
 	}
+
 	fmt.Println("File upload requested")
 
 	if r.Header.Get("content-type") == "application/x-www-form-urlencoded" {
+		fmt.Println("Detected Binary Stream")
 		web.uploadFileBinary(w, r)
 		return
 	} else {
+		fmt.Println("Detected Multipart upload")
 		web.uploadFileMultipart(w, r)
 		return
 	}
@@ -124,7 +127,7 @@ func main() {
 	port := parser.Int("i", "port", &argparse.Options{Default: 5050, Help: "Port used to recieved HTTP traffic"})
 	directory := parser.String("d", "directory", &argparse.Options{Default: "/var/deaddrop/", Help: "Location where the files are stored"})
 	name := parser.String("n", "name", &argparse.Options{Default: "file", Help: "multipart parametername for the file"})
-	methods := parser.StringList("m", "methods", &argparse.Options{Default: []string{"POST"}, Help: "Sets the accepted HTTP method"})
+	methods := parser.StringList("m", "methods", &argparse.Options{Default: []string{"POST", "PUT"}, Help: "Sets the accepted HTTP method"})
 	size := parser.Int("s", "size", &argparse.Options{Default: 100, Help: "Maximal file size allowed to be uploaded in Mb"})
 	err := parser.Parse(os.Args)
 
