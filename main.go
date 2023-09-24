@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -33,14 +33,13 @@ func (web *Web) uploadFileGeneric(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("File upload requested")
 
 	if r.Header.Get("content-type") == "application/x-www-form-urlencoded" {
-		fmt.Println("Detected Binary Stream")
+		fmt.Println("Detected binary stream")
 		web.uploadFileBinary(w, r)
-		return
 	} else {
-		fmt.Println("Detected Multipart upload")
+		fmt.Println("Detected multipart upload")
 		web.uploadFileMultipart(w, r)
-		return
 	}
+	fmt.Println("File upload request closed")
 }
 
 func (web *Web) uploadFileBinary(w http.ResponseWriter, r *http.Request) {
@@ -50,17 +49,17 @@ func (web *Web) uploadFileBinary(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "ERR - 0xa3\n")
+		fmt.Fprintf(w, "ERR - 0x13\n")
 		return
 	}
 	defer tFile.Close()
 
 	// read all of the contents of our uploaded file into a byte array
-	fileBytes, err := ioutil.ReadAll(r.Body)
+	fileBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "ERR - 0xa4\n")
+		fmt.Fprintf(w, "ERR - 0x14\n")
 		return
 	}
 	// write this byte array to our file
@@ -73,7 +72,7 @@ func (web *Web) uploadFileMultipart(w http.ResponseWriter, r *http.Request) {
 	r.ParseMultipartForm(web.maxSize << 20)
 	file, handler, err := r.FormFile(web.name)
 	if err != nil {
-		fmt.Printf("0x01 - Error Retrieving the multipart parameter '%s'\n", web.name)
+		fmt.Printf("0x01 - Error retrieving the multipart parameter '%s'\n", web.name)
 		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "ERR - 0x01\n")
@@ -83,9 +82,9 @@ func (web *Web) uploadFileMultipart(w http.ResponseWriter, r *http.Request) {
 
 	cleaned_filename := nonAlphanumericRegex.ReplaceAllString(handler.Filename, "_")
 
-	fmt.Printf("Uploaded File: %+v\n", cleaned_filename)
-	fmt.Printf("File Size: %+v\n", handler.Size)
-	fmt.Printf("MIME Header: %+v\n", handler.Header)
+	fmt.Printf("Uploaded file: %+v\n", cleaned_filename)
+	fmt.Printf("File size: %+v\n", handler.Size)
+	fmt.Printf("MIME header: %+v\n", handler.Header)
 
 	path := filepath.Join(web.directory, fmt.Sprintf("%d.%s", time.Now().Unix(), cleaned_filename))
 
@@ -109,7 +108,7 @@ func (web *Web) uploadFileMultipart(w http.ResponseWriter, r *http.Request) {
 	defer tFile.Close()
 
 	// read all of the contents of our uploaded file into a byte array
-	fileBytes, err := ioutil.ReadAll(file)
+	fileBytes, err := io.ReadAll(file)
 	if err != nil {
 		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -123,12 +122,12 @@ func (web *Web) uploadFileMultipart(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	parser := argparse.NewParser("deaddrop", "Starts a http server, which can recieve file uploads from wget and curl")
-	port := parser.Int("i", "port", &argparse.Options{Default: 5050, Help: "Port used to recieved HTTP traffic"})
-	directory := parser.String("d", "directory", &argparse.Options{Default: "/var/deaddrop/", Help: "Location where the files are stored"})
-	name := parser.String("n", "name", &argparse.Options{Default: "file", Help: "multipart parametername for the file"})
-	methods := parser.StringList("m", "methods", &argparse.Options{Default: []string{"POST", "PUT"}, Help: "Sets the accepted HTTP method"})
-	size := parser.Int("s", "size", &argparse.Options{Default: 100, Help: "Maximal file size allowed to be uploaded in Mb"})
+	parser := argparse.NewParser("deaddrop", "Starts a HTTP server, which can recieve file uploads from curl")
+	port := parser.Int("i", "port", &argparse.Options{Default: 5050, Help: "Port used to recieve HTTP traffic"})
+	directory := parser.String("d", "directory", &argparse.Options{Default: "/var/deaddrop/", Help: "Location where the uploaded files are stored"})
+	name := parser.String("n", "name", &argparse.Options{Default: "file", Help: "Multipart parameter name for the file"})
+	methods := parser.StringList("m", "methods", &argparse.Options{Default: []string{"POST", "PUT"}, Help: "Sets the accepted HTTP method(s)"})
+	size := parser.Int("s", "size", &argparse.Options{Default: 2048, Help: "Maximal file size allowed to be uploaded in Mb"})
 	err := parser.Parse(os.Args)
 
 	web := &Web{directory: *directory, name: *name, maxSize: int64(*size), methods: *methods}
@@ -137,7 +136,7 @@ func main() {
 		fmt.Print(parser.Usage(err))
 	}
 	if *size <= 0 {
-		fmt.Println("maximal file size can not be 0 or smaller")
+		fmt.Println("Maximal file size can not be 0 or smaller")
 		return
 	}
 

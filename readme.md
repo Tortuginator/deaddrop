@@ -1,6 +1,6 @@
 # deaddrop
 
-A very simple tool to transfer files over HTTP using curl and wget. Intended to be used behind a reverse proxy.
+A very simple tool to transfer files over HTTP using curl. Intended to be used behind a reverse proxy providing TLS encrypytion.
 
 ## Usage
 ```bash
@@ -9,18 +9,18 @@ go build .
 ```
 
 ## Transfer files
-File with metadata: 
+File upload with metadata using curl: 
 ```bash
-curl localhost:5050 -k -F@my_file.bin
-curl localhost:5050 -k -F@my_file.bin --limit-rate 200K # 2 Gb/s = "2G", 3 Mb/s = "3M", 30 Kb/s = "30K"
+curl localhost:5050 -k -F file=@my_file.bin 
 ```
+You may use `--limit-rate 200K` to limit the upload speed with curl. [Futher information](https://everything.curl.dev/usingcurl/transfers/rate-limiting).
 
-Binary data: 
+Binary data upload using curl: 
 ```bash
 curl localhost:5050 -d@my_file.bin
 ```
 
-Piped data: 
+Piped data upload using curl: 
 
 ```bash
 uname -a | curl localhost:5050 -d @-
