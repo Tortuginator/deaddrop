@@ -9,6 +9,7 @@ import (
 
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/akamensky/argparse"
@@ -32,12 +33,23 @@ func (web *Web) uploadFileGeneric(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("File upload requested")
 
+	fmt.Println("Headers:")
+	for name, headers := range r.Header {
+		for _, h := range headers {
+			fmt.Printf("%v: %v\n", name, h)
+		}
+	}
+	fmt.Println("----------------------")
+
 	if r.Header.Get("content-type") == "application/x-www-form-urlencoded" {
 		fmt.Println("Detected binary stream")
 		web.uploadFileBinary(w, r)
-	} else {
+	} else if strings.HasPrefix(r.Header.Get("content-type"), "Content-Type: multipart/form-data") {
 		fmt.Println("Detected multipart upload")
 		web.uploadFileMultipart(w, r)
+	} else {
+		fmt.Println("Detected pure binary upload")
+		web.uploadFileBinary(w, r)
 	}
 	fmt.Println("File upload request closed")
 }
