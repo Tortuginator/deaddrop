@@ -54,16 +54,15 @@ func (web *Web) uploadFileBinary(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tFile.Close()
 
-	// read all of the contents of our uploaded file into a byte array
-	fileBytes, err := io.ReadAll(r.Body)
+	// read all of the contents of our uploaded file
+	_, err = io.Copy(tFile, r.Body)
 	if err != nil {
 		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "ERR - 0x14\n")
 		return
 	}
-	// write this byte array to our file
-	tFile.Write(fileBytes)
+
 	// return that we have successfully uploaded our file!
 	fmt.Fprintf(w, "OK\n")
 }
@@ -108,15 +107,13 @@ func (web *Web) uploadFileMultipart(w http.ResponseWriter, r *http.Request) {
 	defer tFile.Close()
 
 	// read all of the contents of our uploaded file into a byte array
-	fileBytes, err := io.ReadAll(file)
+	_, err = io.Copy(tFile, file)
 	if err != nil {
 		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "ERR - 0x04\n")
 		return
 	}
-	// write this byte array to our file
-	tFile.Write(fileBytes)
 	// return that we have successfully uploaded our file!
 	fmt.Fprintf(w, "OK\n")
 }
