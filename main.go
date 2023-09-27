@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-
+	"strings"
 	"path/filepath"
 	"regexp"
 	"time"
@@ -35,9 +35,13 @@ func (web *Web) uploadFileGeneric(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("content-type") == "application/x-www-form-urlencoded" {
 		fmt.Println("Detected binary stream")
 		web.uploadFileBinary(w, r)
-	} else {
+	} else if strings.HasPrefix(r.Header.Get("content-type"),"multipart"){
 		fmt.Println("Detected multipart upload")
 		web.uploadFileMultipart(w, r)
+	} else {
+		fmt.Println("Detected binary stream (fallback)")
+		web.uploadFileBinary(w, r)
+		
 	}
 	fmt.Println("File upload request closed")
 }
