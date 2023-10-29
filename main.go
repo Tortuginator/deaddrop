@@ -3,16 +3,15 @@ package main
 import (
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
-
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/akamensky/argparse"
+	"github.com/charmbracelet/log"
 	"golang.org/x/exp/slices"
 )
 
@@ -27,42 +26,45 @@ var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z0-9\. ]+`)
 
 func (web *Web) uploadFileGeneric(w http.ResponseWriter, r *http.Request) {
 	if !slices.Contains(web.methods, r.Method) {
-		fmt.Printf("Upload endpoint requested using a unknown method '%s'\n", r.Method)
+		log.Infof("Upload endpoint '%s' requested using a unknown method '%s'", r.URL, r.Method)
 		return
 	}
 
-	fmt.Println("File upload requested")
-
-	fmt.Println("Headers:")
+	log.Infof("Recieved potential upload request [%s] %s", r.Method, r.URL)
+	log.Debug("Headers:")
 	for name, headers := range r.Header {
 		for _, h := range headers {
-			fmt.Printf("%v: %v\n", name, h)
+			log.Debugf("%v: %v\n", name, h)
 		}
 	}
-	fmt.Println("----------------------")
-
+	log.Debug("----------------------")
+	var err error = nil
 	if r.Header.Get("content-type") == "application/x-www-form-urlencoded" {
-		fmt.Println("Detected binary stream")
-		web.uploadFileBinary(w, r)
+		log.Infof("Detected upload method: binary stream")
+		err = web.uploadFileBinary(w, r)
 	} else if strings.HasPrefix(r.Header.Get("content-type"), "Content-Type: multipart/form-data") {
-		fmt.Println("Detected multipart upload")
-		web.uploadFileMultipart(w, r)
+		log.Infof("Detected upload method: multipart")
+		err = web.uploadFileMultipart(w, r)
 	} else {
-		fmt.Println("Detected pure binary upload")
-		web.uploadFileBinary(w, r)
+		log.Infof("Fallback upload method: binary stream")
+		err = web.uploadFileBinary(w, r)
 	}
-	fmt.Println("File upload request closed")
+	if err == nil {
+		log.Infof("Successfully completed upload request")
+	} else {
+		log.Error(err)
+	}
 }
 
-func (web *Web) uploadFileBinary(w http.ResponseWriter, r *http.Request) {
+func (web *Web) uploadFileBinary(w http.ResponseWriter, r *http.Request) error {
 	path := filepath.Join(web.directory, fmt.Sprintf("%d.blob", time.Now().Unix()))
 	// Create a  file within our directory
 	tFile, err := os.Create(path)
 	if err != nil {
 		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "ERR - 0x13\n")
-		return
+		fmt.Fprintf(w, "ERR - 0x13")
+		return fmt.Errorf("(ERR - 0x13) Unable to create local file '%s' with error '%v'", path, err)
 	}
 	defer tFile.Close()
 
@@ -71,63 +73,61 @@ func (web *Web) uploadFileBinary(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "ERR - 0x14\n")
-		return
+		fmt.Fprintf(w, "ERR - 0x14")
+		return fmt.Errorf("(ERR - 0x14) Failed to read request content with error '%v'", err)
 	}
 
 	// return that we have successfully uploaded our file!
 	fmt.Fprintf(w, "OK\n")
+	log.Infof("Written file to %s", path)
+	return nil
 }
 
-func (web *Web) uploadFileMultipart(w http.ResponseWriter, r *http.Request) {
+func (web *Web) uploadFileMultipart(w http.ResponseWriter, r *http.Request) error {
 	r.ParseMultipartForm(web.maxSize << 20)
 	file, handler, err := r.FormFile(web.name)
 	if err != nil {
-		fmt.Printf("0x01 - Error retrieving the multipart parameter '%s'\n", web.name)
-		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "ERR - 0x01\n")
-		return
+		fmt.Fprintf(w, "ERR - 0x01")
+		return fmt.Errorf("(ERR - 0x13) Error retrieving the multipart parameter '%s' with error '%v'", web.name, err)
 	}
 	defer file.Close()
 
 	cleaned_filename := nonAlphanumericRegex.ReplaceAllString(handler.Filename, "_")
 
-	fmt.Printf("Uploaded file: %+v\n", cleaned_filename)
-	fmt.Printf("File size: %+v\n", handler.Size)
-	fmt.Printf("MIME header: %+v\n", handler.Header)
+	log.Debugf("Uploaded file: %+v", cleaned_filename)
+	log.Debugf("File size: %+v", handler.Size)
+	log.Debugf("MIME header: %+v", handler.Header)
 
 	path := filepath.Join(web.directory, fmt.Sprintf("%d.%s", time.Now().Unix(), cleaned_filename))
 
 	//Check for path traversal
 	if filepath.Dir(path) != filepath.Dir(web.directory) {
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Println(filepath.Dir(path))
-		fmt.Println(filepath.Dir(web.directory))
-		fmt.Fprintf(w, "ERR - 0x02\n")
-		return
+		fmt.Fprintf(w, "ERR - 0x02")
+		return fmt.Errorf("(ERR - 0x02) Detected path traversal '%s'", path)
 	}
 
 	// Create a  file within our directory
 	tFile, err := os.Create(path)
 	if err != nil {
-		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "ERR - 0x03\n")
-		return
+		fmt.Fprintf(w, "ERR - 0x03")
+		return fmt.Errorf("(ERR - 0x03) Unable to create local file '%s' with error '%v'", path, err)
 	}
 	defer tFile.Close()
 
 	// read all of the contents of our uploaded file into a byte array
 	_, err = io.Copy(tFile, file)
 	if err != nil {
-		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "ERR - 0x04\n")
-		return
+		fmt.Fprintf(w, "ERR - 0x04")
+		return fmt.Errorf("(ERR - 0x04) Failed to read request content with error '%v'", err)
 	}
 	// return that we have successfully uploaded our file!
-	fmt.Fprintf(w, "OK\n")
+	log.Infof("Written file to %s", path)
+	fmt.Fprintf(w, "OK")
+	return nil
 }
 
 func main() {
@@ -145,7 +145,7 @@ func main() {
 		fmt.Print(parser.Usage(err))
 	}
 	if *size <= 0 {
-		fmt.Println("Maximal file size can not be 0 or smaller")
+		log.Error("Maximal file size can not be 0 or smaller")
 		return
 	}
 
@@ -153,12 +153,11 @@ func main() {
 	if _, err := os.Stat(*directory); os.IsNotExist(err) {
 		err = os.Mkdir(*directory, 0766)
 		if err != nil {
-			fmt.Println(err)
+			log.Errorf("Unable to create folder '%s' due to following error %v", *directory, err)
 			return
 		}
 	}
-
-	fmt.Printf("Starting HTTP server on: %d\n", *port)
+	log.Infof("Listening on :%d", *port)
 	http.HandleFunc("/", web.uploadFileGeneric)
 	http.ListenAndServe(fmt.Sprintf(":%d", *port), nil)
 	if err != nil {
